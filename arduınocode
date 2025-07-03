@@ -1,0 +1,293 @@
+#include <DHT.h>
+
+// Motor pinleri
+#define ENA 2
+#define ENB 3
+#define IN1 22
+#define IN2 23
+#define IN3 24
+#define IN4 25
+
+// IR sensör pinleri
+#define L_S 44
+#define R_S 45
+
+// Ultrasonik sensör pinleri
+#define trigOrta 37
+#define echoOrta 36
+#define trigSag 41
+#define echoSag 40
+#define trigSol 32
+#define echoSol 33
+
+// DHT11 tanımları
+#define DHTPIN 48
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// LED pinleri
+#define yesil1 4
+#define yesil2 5
+#define sari1 6
+#define sari2 7
+#define kirmizi1 8
+#define kirmizi2 9
+
+// buzzer
+#define buzzer 10
+
+// MQ-9
+#define mq9Pin A0
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(ENA, OUTPUT);
+  pinMode(ENB, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  pinMode(L_S, INPUT);
+  pinMode(R_S, INPUT);
+
+  pinMode(trigOrta, OUTPUT); pinMode(echoOrta, INPUT);
+  pinMode(trigSag, OUTPUT);  pinMode(echoSag, INPUT);
+  pinMode(trigSol, OUTPUT);  pinMode(echoSol, INPUT);
+
+  pinMode(yesil1, OUTPUT);
+  pinMode(yesil2, OUTPUT);
+  pinMode(sari1, OUTPUT);
+  pinMode(sari2, OUTPUT);
+  pinMode(kirmizi1, OUTPUT);
+  pinMode(kirmizi2, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+
+  dht.begin();
+}
+
+void loop() {
+  engelKontrol();
+  cizgiTakip();
+  sicaklikKontrol();
+  gazKontrol();
+  delay(3);
+}
+
+// Çizgi takibi
+void cizgiTakip() {
+  int sag = digitalRead(R_S);
+  int sol = digitalRead(L_S);
+
+  Serial.print("Sol IR: ");
+  Serial.print(sol);
+  Serial.print(" | Sag IR: ");
+  Serial.print(sag);
+  Serial.print(" | Karar: ");
+
+  if (sag == LOW && sol == LOW) {
+    Serial.println("İLERİ");
+    ileri();
+  } else if (sag == HIGH && sol == LOW) {
+    Serial.println("SAĞA DÖN");
+    sagaDon();
+  } else if (sag == LOW && sol == HIGH) {
+    Serial.println("SOLA DÖN");
+    solaDon();
+  } else {
+    Serial.println("ÇİZGİ YOK");
+    dur();
+  }
+}
+
+// Engel algılama ve kaçış
+void engelKontrol() {
+  long mesafeOrta = olcMesafe(trigOrta, echoOrta);
+  Serial.print("Mesafe Orta: ");
+  Serial.print(mesafeOrta);
+  Serial.println(" cm");
+
+  if (mesafeOrta > 25) return;
+
+  dur();
+  delay(100);
+
+  long mesafeSag = olcMesafe(trigSag, echoSag);
+  delay(50);
+  long mesafeSol = olcMesafe(trigSol, echoSol);
+  delay(50);
+
+  if (mesafeSag > 25 && mesafeSag >= mesafeSol) {
+    saga45();
+  } else if (mesafeSol > 25) {
+    sola45();
+  } else {
+    geri();
+    delay(800);
+    dur();
+    return;
+  }
+
+  ileri();
+  delay(1200);
+
+  if (mesafeSag > 25 && mesafeSag >= mesafeSol) {
+    sola45();
+  } else if (mesafeSol > 25) {
+    saga45();
+  }
+
+  ileri();
+  delay(1000);
+
+  if (mesafeSag > 25 && mesafeSag >= mesafeSol) {
+    sola45();
+  } else if (mesafeSol > 25) {
+    saga45();
+  }
+}
+
+// Mesafe ölçme
+long olcMesafe(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  return pulseIn(echoPin, HIGH) * 0.034 / 2;
+}
+
+// Sıcaklık kontrol
+void sicaklikKontrol() {
+  float sicaklik = dht.readTemperature();
+  Serial.print("Sıcaklık: ");
+  Serial.println(sicaklik);
+
+  if (sicaklik >= 25 && sicaklik < 28) {
+    digitalWrite(yesil1, HIGH);
+    digitalWrite(sari1, LOW);
+    digitalWrite(kirmizi1, LOW);
+    digitalWrite(buzzer, LOW);
+  }
+  else if (sicaklik >= 28 && sicaklik <= 32) {
+    digitalWrite(yesil1, LOW);
+    digitalWrite(sari1, HIGH);
+    digitalWrite(kirmizi1, LOW);
+    digitalWrite(buzzer, LOW);
+  }
+  else if (sicaklik > 32) {
+    digitalWrite(yesil1, LOW);
+    digitalWrite(sari1, LOW);
+    digitalWrite(kirmizi1, HIGH);
+    digitalWrite(buzzer, HIGH);
+  }
+  else {
+    digitalWrite(yesil1, LOW);
+    digitalWrite(sari1, LOW);
+    digitalWrite(kirmizi1, LOW);
+    digitalWrite(buzzer, LOW);
+  }
+}
+
+// Gaz kontrol
+void gazKontrol() {
+  int gazDegeri = analogRead(mq9Pin);
+  Serial.print("Gaz: ");
+  Serial.println(gazDegeri);
+
+  if (gazDegeri >= 50 && gazDegeri < 300) {
+    digitalWrite(yesil2, HIGH);
+    digitalWrite(sari2, LOW);
+    digitalWrite(kirmizi2, LOW);
+    digitalWrite(buzzer, LOW);
+  }
+  else if (gazDegeri >= 300 && gazDegeri <= 450) {
+    digitalWrite(yesil2, LOW);
+    digitalWrite(sari2, HIGH);
+    digitalWrite(kirmizi2, LOW);
+    digitalWrite(buzzer, LOW);
+  }
+  else if (gazDegeri > 450) {
+    digitalWrite(yesil2, LOW);
+    digitalWrite(sari2, LOW);
+    digitalWrite(kirmizi2, HIGH);
+    digitalWrite(buzzer, HIGH);
+  }
+  else {
+    digitalWrite(yesil2, LOW);
+    digitalWrite(sari2, LOW);
+    digitalWrite(kirmizi2, LOW);
+    digitalWrite(buzzer, LOW);
+  }
+}
+
+// Motor fonksiyonları
+void ileri() {
+  analogWrite(ENA, 70);
+  analogWrite(ENB, 70);
+  digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
+}
+
+void geri() {
+  analogWrite(ENA, 70);
+  analogWrite(ENB, 70);
+  digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+}
+
+void sagaDon() {
+  analogWrite(ENA, 100);
+  analogWrite(ENB, 100);
+  digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
+}
+
+void solaDon() {
+  analogWrite(ENA, 100);
+  analogWrite(ENB, 100);
+  digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+}
+
+void saga90() {
+  analogWrite(ENA, 100);
+  analogWrite(ENB, 100);
+  digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+  delay(1000);
+  dur();
+}
+
+void sola90() {
+  analogWrite(ENA, 100);
+  analogWrite(ENB, 100);
+  digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
+  delay(1000);
+  dur();
+}
+
+void saga45() {
+  analogWrite(ENA, 100);
+  analogWrite(ENB, 100);
+  digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
+  delay(1200);
+  dur();
+}
+
+void sola45() {
+  analogWrite(ENA, 100);
+  analogWrite(ENB, 100);
+  digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+  delay(1200);
+  dur();
+}
+
+void dur() {
+  analogWrite(ENA, 0);
+  analogWrite(ENB, 0);
+}
